@@ -1,0 +1,3 @@
+*.zwc
+*.pre-dotfiles
+tmux/tmux-sessionizer.conf

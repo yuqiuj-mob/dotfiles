@@ -1,0 +1,19 @@
+# tmux-sessionizer projects — copy to tmux-sessionizer.conf NEXT TO the
+# script (or point $TMUX_SESSIONIZER_CONF at it) and edit per machine.
+# The real .conf is machine-local and NOT tracked in the dotfiles repo.
+#
+#   dir: <path>, depth: <N>
+#   depth 0 = <path> itself IS a project (added verbatim, not scanned)
+#   depth 1 = immediate children  (default if depth is omitted)
+#   depth N = dirs exactly N levels down
+# '#' comments and blank lines are ignored. Symlinks are always ignored.
+# ~, $HOME and $USER are expanded, so this file works across machines.
+
+# Optional: seed a Perforce client into sessions whose name matches a regex.
+#   p4match:  regex with ONE capture group, tested against the session name
+#   p4client: client template; {match} = capture group, {wsl} = "-wsl" on WSL
+# p4match: ^(proj[0-9a-z]+)
+# p4client: {match}{wsl}-$USER
+
+dir: ~/Repos, depth: 1
+dir: ~/code,  depth: 1

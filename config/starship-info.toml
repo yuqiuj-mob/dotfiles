@@ -1,0 +1,70 @@
+# Info line only — printed from tcsh precmd as plain output, NOT as part of
+# the prompt. tcsh's line editor assumes a one-line prompt; a real two-line
+# prompt garbles on pane resize/redraw. See ~/.tcshrc snippet:
+#   alias precmd 'env STARSHIP_CONFIG=$HOME/.config/starship-info.toml starship prompt; echo'
+#   set prompt = "%{\033[1;38;5;214m%}>%{\033[0m%} "
+# Same modules/colors as starship.toml, minus line_break and character.
+
+format = """
+$username\
+$hostname\
+$directory\
+$git_branch\
+$git_status\
+$env_var\
+$cmd_duration"""
+
+[username]
+show_always = true
+format = "[$user]($style)"
+style_user = "bold 208"
+style_root = "bold 160"
+
+[hostname]
+ssh_only = false
+format = "[@$hostname]($style) "
+style = "bold 208"
+
+[directory]
+truncation_length = 4
+truncation_symbol = ".../"
+format = "[$path]($style)[$read_only]($read_only_style) "
+style = "bold 215"
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = ""
+style = "bold 168"
+
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
+style = "bold 203"
+
+[env_var.P4CLIENT]
+symbol = "p4:"
+variable = "P4CLIENT"
+format = "[$symbol$env_value]($style) "
+style = "bold 221"
+
+[cmd_duration]
+min_time = 2000
+format = "[$duration]($style) "
+style = "245"
+
+[package]
+disabled = true
+
+[python]
+disabled = true
+
+[golang]
+disabled = true
+
+[nodejs]
+disabled = true
+
+[rust]
+disabled = true
+
+[java]
+disabled = true

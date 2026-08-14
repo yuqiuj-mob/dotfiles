@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# tmux-sessionizer — fuzzy-jump to a project as a tmux session.
+# Pick a directory (or pass one as $1); attach to its session if it already
+# exists, otherwise create it. Never errors "duplicate session".
+#
+# Bind it in ~/.tmux.conf, e.g.:
+#   bind o display-popup -E -w 60% -h 60% "~/.config/tmux/tmux-sessionizer"
+#
+# Projects come from a config file NEXT TO this script (so it travels with the
+# script when deployed to another machine).  Override with $TMUX_SESSIONIZER_CONF.
+#   Format (one entry per line, '#' comments + blank lines ignored):
+#     dir: <path>, depth: <N>
+#   depth 0 -> <path> itself IS a project (added verbatim, not scanned)
+#   depth 1 -> immediate children (this is the default if depth is omitted)
+#   depth N -> directories EXACTLY N levels down (mindepth==maxdepth==N)
+#   Symlinks are always ignored.  ~, $HOME and $USER are expanded in paths.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONF="${TMUX_SESSIONIZER_CONF:-$SCRIPT_DIR/tmux-sessionizer.conf}"
+
+expand_path() {                       # ~, $HOME, $USER only (safe, no eval)
+  local p="$1"
+  p="${p/#\~/$HOME}"; p="${p//\$HOME/$HOME}"; p="${p//\$USER/$USER}"
+  printf '%s\n' "$p"
+}
+
+list_projects() {
+  if [[ ! -f "$CONF" ]]; then         # fallback if no config is deployed yet
+    find "$HOME" -mindepth 1 -maxdepth 1 -type d 2>/dev/null
+    return
+  fi
+  local line dir depth
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"                                    # strip comments
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue           # skip blank
+    dir="$(  sed -n 's/.*dir:[[:space:]]*\([^,]*\).*/\1/p' <<<"$line")"
+    dir="${dir%"${dir##*[![:space:]]}"}"                  # rtrim trailing space
+    depth="$(sed -n 's/.*depth:[[:space:]]*\([0-9][0-9]*\).*/\1/p' <<<"$line")"
+    [[ -z "$dir" ]] && continue
+    [[ -z "$depth" ]] && depth=1
+    dir="$(expand_path "$dir")"
+    if [[ "$depth" -eq 0 ]]; then
+      [[ -d "$dir" && ! -L "$dir" ]] && printf '%s\n' "$dir"   # explicit, no symlink
+    else
+      # scan exactly N deep; skip hidden dirs (.git/.claude/…) and symlinks
+      find "$dir" -mindepth "$depth" -maxdepth "$depth" \
+           -type d -not -path '*/.*' 2>/dev/null
+    fi
+  done < "$CONF"
+}
+
+if [[ $# -eq 1 ]]; then
+  selected="$1"
+else
+  selected=$(list_projects | sed 's:/*$::' | sort -u \
+             | fzf --prompt="project ❯ " --height=100% --reverse)
+fi
+[[ -z "$selected" ]] && exit 0
+
+# Normalize: strip trailing slash, then turn tmux-hostile chars (. : and
+# whitespace) into _ so the name we check ALWAYS equals the name we create.
+selected="${selected%/}"
+name="$(basename "$selected" | tr '.: \t' '____')"
+
+# Reuse the session if it exists (exact match via the "=" target prefix);
+# only create it when it's genuinely missing.
+if ! tmux has-session -t "=$name" 2>/dev/null; then
+  # Sessions matching the conf's "p4match:" regex get a Perforce client
+  # seeded into the session environment, so every pane of the session
+  # (including the first) starts with it set.
+  # The client name comes from the conf's "p4client:" template:
+  #   {match} -> first capture group of the p4match regex
+  #   {wsl}   -> "-wsl" when running under WSL, empty elsewhere
+  #   ~, $HOME, $USER expanded as usual
+  p4env=()
+  p4_tmpl="$(sed -n 's/^[[:space:]]*p4client:[[:space:]]*//p' "$CONF" 2>/dev/null | head -1)"
+  p4_match="$(sed -n 's/^[[:space:]]*p4match:[[:space:]]*//p' "$CONF" 2>/dev/null | head -1)"
+  if [[ -n "$p4_tmpl" && -n "$p4_match" && "$name" =~ $p4_match ]]; then
+    wsl=""
+    grep -qi microsoft /proc/version 2>/dev/null && wsl="-wsl"
+    client="${p4_tmpl//\{match\}/${BASH_REMATCH[1]}}"
+    client="${client//\{wsl\}/$wsl}"
+    p4env=(-e "P4CLIENT=$(expand_path "$client")")
+  fi
+  tmux new-session -ds "$name" -c "$selected" "${p4env[@]}"
+fi
+
+# Go there. Fallback (|| true) so we never surface an error to the popup.
+if [[ -n "$TMUX" ]]; then
+  tmux switch-client -t "=$name"
+else
+  tmux attach-session -t "=$name"
+fi
