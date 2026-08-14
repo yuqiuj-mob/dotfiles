@@ -149,8 +149,13 @@ alias py='python3'
 alias mntusb='sudo mount -t drvfs D: /media/usbms'
 alias umntusb='sudo umount /media/usbms'
 alias puml='java -jar ~/tools/plantuml/plantuml-mit-1.2023.12.jar '
-alias kitty='~/.local/kitty.app/bin/kitty'
-alias cat="batcat"
+[[ -x ~/.local/kitty.app/bin/kitty ]] && alias kitty='~/.local/kitty.app/bin/kitty'
+
+# bat is `batcat` on Debian/Ubuntu, `bat` elsewhere; exa is retired -> eza on
+# newer machines. Resolve once; fzf previews below use the resolved names.
+BAT_CMD=bat;   (( $+commands[batcat] )) && BAT_CMD=batcat
+EXA_CMD=exa;   (( ! $+commands[exa] && $+commands[eza] )) && EXA_CMD=eza
+alias cat="$BAT_CMD"
 
 alias cc='claude'
 
@@ -203,9 +208,10 @@ gt=38;5;44:\
 *.json=38;5;137:*.yaml=38;5;137:*.yml=38;5;137:*.toml=38;5;137:\
 *.conf=38;5;137:*.cfg=38;5;137:\
 *.lock=38;5;240:*.log=38;5;245"
+export EZA_COLORS="$EXA_COLORS"
 
-alias l='exa -l --icons'
-alias la='exa -la --icons'
+alias l="$EXA_CMD -l --icons"
+alias la="$EXA_CMD -la --icons"
 
 # fzf configuration
 export FZF_DEFAULT_COMMAND='fd --no-follow --type f --hidden --exclude .git'
@@ -219,7 +225,7 @@ export FZF_DEFAULT_OPTS=" \
   --color=bg+:#1e1e1e,fg+:#ffffff,hl:#c79f57,hl+:#d7af5f \
   --color=info:#5f9f9f,prompt:#9f7fcf,pointer:#c76f6f,marker:#5faf6f \
   --color=spinner:#5f9f9f,header:#5f9f9f,border:#3a3a3a,gutter:-1 \
-  --preview 'batcat --color=always --style=numbers --line-range=:500 {} 2>/dev/null || exa -l --icons --tree --level=2 {} 2>/dev/null' \
+  --preview '$BAT_CMD --color=always --style=numbers --line-range=:500 {} 2>/dev/null || $EXA_CMD -l --icons --tree --level=2 {} 2>/dev/null' \
   --preview-window='right:60%:wrap' \
   --bind='ctrl-/:toggle-preview' \
   --bind='ctrl-a:select-all' \
@@ -228,24 +234,30 @@ export FZF_DEFAULT_OPTS=" \
 # Ctrl-T: paste selected files onto command line
 export FZF_CTRL_T_COMMAND='fd --no-follow --type f --hidden --exclude .git'
 export FZF_CTRL_T_OPTS=" \
-  --preview 'batcat --color=always --style=numbers --line-range=:500 {}' \
+  --preview '$BAT_CMD --color=always --style=numbers --line-range=:500 {}' \
   --preview-window='right:60%:wrap'"
 
 # Alt-C: cd into selected directory
 export FZF_ALT_C_COMMAND='fd --no-follow --type d --hidden --exclude .git'
-export FZF_ALT_C_OPTS="--preview 'exa -l --icons --tree --level=2 {}'"
+export FZF_ALT_C_OPTS="--preview '$EXA_CMD -l --icons --tree --level=2 {}'"
 
 # Ctrl-R: search history (no changes needed, works out of the box)
 
-# Source fzf keybindings (completion sourced after compinit below)
-source /usr/share/doc/fzf/examples/key-bindings.zsh
+# Source fzf keybindings (completion sourced after compinit below).
+# Debian ships them under /usr/share/doc, Homebrew under its prefix.
+FZF_SHELL_DIR=/usr/share/doc/fzf/examples
+for _d in /opt/homebrew/opt/fzf/shell /usr/local/opt/fzf/shell; do
+  [[ -d $_d ]] && FZF_SHELL_DIR=$_d
+done
+[[ -r $FZF_SHELL_DIR/key-bindings.zsh ]] && source $FZF_SHELL_DIR/key-bindings.zsh
 bindkey '^R' history-incremental-search-backward  # restore default Ctrl-R
 
 
 # include local apps in path
-export PATH="/snap/bin/:$PATH"
+[[ -d /snap/bin ]] && export PATH="/snap/bin/:$PATH"
 export PATH="$HOME/go/bin:$HOME/.local/bin:$PATH"
-export PATH="/home/rjiang/code/study-asm/renode-hello-app/renode_portable/:$PATH"
+[[ -d $HOME/code/study-asm/renode-hello-app/renode_portable ]] &&
+  export PATH="$HOME/code/study-asm/renode-hello-app/renode_portable/:$PATH"
 
 # completion setup (compinit called below after fpath additions)
 zstyle ':completion:*' menu select
@@ -291,10 +303,11 @@ autoload -Uz compinit bashcompinit
 compinit
 bashcompinit
 # Argcomplete explicit registration for pubs
-eval "$(register-python-argcomplete pubs)"
+(( $+commands[register-python-argcomplete] && $+commands[pubs] )) &&
+  eval "$(register-python-argcomplete pubs)"
 
 # fzf completion must come after compinit to keep **<Tab> working
-source /usr/share/doc/fzf/examples/completion.zsh
+[[ -r $FZF_SHELL_DIR/completion.zsh ]] && source $FZF_SHELL_DIR/completion.zsh
 
 # add go to path
 export PATH=$PATH:/usr/local/go/bin
@@ -308,19 +321,20 @@ export PATH=$PATH:~/.local/share/coursier/bin
 # temp fix for xwidgets
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 
-source /home/rjiang/.config/broot/launcher/bash/br
+[[ -r "$HOME/.config/broot/launcher/bash/br" ]] &&
+  source "$HOME/.config/broot/launcher/bash/br"
 # zprof
 
 # enable zoxide
-eval "$(zoxide init zsh)"
+(( $+commands[zoxide] )) && eval "$(zoxide init zsh)"
 
 # Ensure xauth cookie exists for X11 forwarding (WSLg)
-if [[ -n "$DISPLAY" ]] && ! xauth list "$DISPLAY" &>/dev/null; then
+if (( $+commands[xauth] )) && [[ -n "$DISPLAY" ]] && ! xauth list "$DISPLAY" &>/dev/null; then
   xauth add :0 . "$(mcookie)" 2>/dev/null
 fi
 
 # opam configuration
-[[ ! -r /home/rjiang/.opam/opam-init/init.zsh ]] || source /home/rjiang/.opam/opam-init/init.zsh  > /dev/null 2> /dev/null
+[[ ! -r "$HOME/.opam/opam-init/init.zsh" ]] || source "$HOME/.opam/opam-init/init.zsh" > /dev/null 2> /dev/null
 
 
 

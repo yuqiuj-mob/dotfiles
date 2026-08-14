@@ -1,5 +1,5 @@
 [credential "https://github.com"]
-	helper = !/usr/bin/gh auth git-credential
+	helper = !gh auth git-credential
 [user]
 	name = akiq
 	email = yuqiujp@gmail.com
@@ -16,8 +16,7 @@
 	enabled = true
 [init]
 	defaultBranch = main
-[maintenance]
-	repo = /home/rjiang/Repos/znap
-	repo = /home/rjiang/Repos/aureliojargas/clitest
-	repo = /home/rjiang/Repos/marlonrichert/zsh-autocomplete
-	repo = /home/rjiang/Repos/zsh-users/zsh-completions
+# Machine-local settings (e.g. [maintenance] repo list) live untracked in
+# ~/.gitconfig.local, seeded by install.sh.
+[include]
+	path = ~/.gitconfig.local

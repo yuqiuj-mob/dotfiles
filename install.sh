@@ -5,6 +5,17 @@
 set -euo pipefail
 DOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Platform switch: zsh/zprofile sets PATH via Homebrew on macOS, so catch a
+# missing brew here instead of debugging a broken PATH later.
+case "$(uname -s)" in
+  Darwin)
+    [[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew ]] ||
+      echo "warning: Homebrew not found; PATH setup in zprofile expects it (https://brew.sh)" >&2
+    ;;
+  Linux)
+    ;;
+esac
+
 link() {  # link <repo-relative-src> <absolute-dest>
   local src="$DOT/$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
@@ -44,5 +55,8 @@ link ctags     ~/.ctags
 
 # ~/.localrc holds machine-local & work config sourced by zshrc; seed empty
 [[ -f ~/.localrc ]] || { touch ~/.localrc; echo "seeded empty ~/.localrc"; }
+
+# ~/.gitconfig.local holds machine-local git config (e.g. maintenance repos)
+[[ -f ~/.gitconfig.local ]] || { touch ~/.gitconfig.local; echo "seeded empty ~/.gitconfig.local"; }
 
 echo "done."
