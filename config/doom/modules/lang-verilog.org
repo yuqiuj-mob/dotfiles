@@ -14,12 +14,14 @@ highlighting and structural navigation than the built-in =verilog-mode=.
 
 ** imenu: instance names
 By default =verilog-ts-mode= labels instance entries by module *type* only, so
-imenu is searchable by module name but not instance name. Relabel instances as
-=instance_name:module_type= so both are searchable.
+imenu is searchable by module name but not instance name. Relabel instances so
+both are searchable, laid out as two columns: the instance name (in a distinct
+color, padded to a fixed width) followed by the module type (dimmed).
 
 Scoped to imenu only via a dynamic flag bound around index creation, so the
-=which-func= breadcrumb (which shares the same name function) is left at its
-stock behavior.
+=which-func= breadcrumb (which shares the same name function) keeps its stock
+behavior. The label formatter is swapped for one that preserves text
+properties, since the default =(format "%s" name)= would strip the faces.
 #+begin_src emacs-lisp
 (after! verilog-ts-mode
   ;; Drop the earlier globally-scoped advice (renamed since) so a config
@@ -29,6 +31,14 @@ stock behavior.
 
   (defvar my/verilog-ts-imenu-active nil
     "Non-nil while `verilog-ts' imenu index is being built.")
+
+  (defvar my/verilog-ts-imenu-instance-width 22
+    "Column width the instance name is padded to in imenu labels.")
+
+  ;; Preserve text properties (faces) on labels; the stock formatter uses
+  ;; (format "%s" name), which strips them.
+  (setq verilog-ts-imenu-format-item-label-function
+        (lambda (_type name) name))
 
   (define-advice verilog-ts--imenu-create-index
       (:around (orig-fn &rest args) my/verilog-ts-imenu-flag)
@@ -43,7 +53,10 @@ stock behavior.
                (string-match verilog-ts-instance-re (treesit-node-type node)))
           (let ((inst (ignore-errors (verilog-ts--node-instance-name node))))
             (if (and inst (not (string-empty-p inst)))
-                (format "%s:%s" inst name)
+                (concat
+                 (propertize (format (format "%%-%ds" my/verilog-ts-imenu-instance-width) inst)
+                             'face 'font-lock-function-name-face)
+                 (propertize name 'face 'shadow))
               name))
         name))))
 #+end_src

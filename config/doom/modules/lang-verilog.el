@@ -12,6 +12,14 @@
   (defvar my/verilog-ts-imenu-active nil
     "Non-nil while `verilog-ts' imenu index is being built.")
 
+  (defvar my/verilog-ts-imenu-instance-width 22
+    "Column width the instance name is padded to in imenu labels.")
+
+  ;; Preserve text properties (faces) on labels; the stock formatter uses
+  ;; (format "%s" name), which strips them.
+  (setq verilog-ts-imenu-format-item-label-function
+        (lambda (_type name) name))
+
   (define-advice verilog-ts--imenu-create-index
       (:around (orig-fn &rest args) my/verilog-ts-imenu-flag)
     (let ((my/verilog-ts-imenu-active t))
@@ -25,7 +33,10 @@
                (string-match verilog-ts-instance-re (treesit-node-type node)))
           (let ((inst (ignore-errors (verilog-ts--node-instance-name node))))
             (if (and inst (not (string-empty-p inst)))
-                (format "%s:%s" inst name)
+                (concat
+                 (propertize (format (format "%%-%ds" my/verilog-ts-imenu-instance-width) inst)
+                             'face 'font-lock-function-name-face)
+                 (propertize name 'face 'shadow))
               name))
         name))))
 
