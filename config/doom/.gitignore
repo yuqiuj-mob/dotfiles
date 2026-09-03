@@ -1,0 +1,4 @@
+*.elc
+*.html
+eln-cache/
+.local/

@@ -1,0 +1,24 @@
+#+title: Projects & Navigation
+#+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
+#+PROPERTY: header-args:emacs-lisp :tangle yes
+
+* Projectile
+#+begin_src emacs-lisp
+(setq projectile-sort-order 'modification-time)
+(setq projectile-tags-command "ctags-exuberant -Re -f \"%s\" %s")
+
+(after! projectile
+    (add-to-list 'projectile-globally-ignored-directories "^//.venv$")
+    (add-to-list 'projectile-globally-ignored-directories "^//cache$"))
+#+end_src
+
+* Prog Mode
+#+begin_src emacs-lisp
+(add-hook 'prog-mode-hook 'highlight-indentation-mode)
+#+end_src
+
+* Common Lisp
+#+begin_src emacs-lisp
+(load (expand-file-name "~/.quicklisp/slime-helper.el"))
+(setq inferior-lisp-program "sbcl")
+#+end_src

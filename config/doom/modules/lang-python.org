@@ -1,0 +1,26 @@
+#+title: Python
+#+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
+#+PROPERTY: header-args:emacs-lisp :tangle yes
+
+* REPL: IPython
+Use IPython as the inferior shell (=C-c C-c= target) when available.
+Post-mortem debugging: after an exception in the REPL, run =%debug= to
+enter pdb inside the crashed frame; =%pdb on= makes it automatic for
+every uncaught exception. =--simple-prompt= is required for IPython to
+behave inside a comint buffer.
+#+begin_src emacs-lisp
+(after! python
+  (when (executable-find "ipython")
+    (setq python-shell-interpreter "ipython"
+          python-shell-interpreter-args "-i --simple-prompt")))
+#+end_src
+
+* Inline plots in the REPL
+=comint-mime= renders IPython's rich (MIME) output -- matplotlib
+figures, pandas tables -- as images directly in the =*Python*= buffer.
+Requires the IPython interpreter above. Package declared in
+=packages.el=.
+#+begin_src emacs-lisp
+(use-package! comint-mime
+  :hook (inferior-python-mode . comint-mime-setup))
+#+end_src

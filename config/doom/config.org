@@ -1,0 +1,50 @@
+#+title: Doom Emacs Configuration
+#+AUTHOR: Rick Jiang
+#+EMAIL: yuqiujp@gmail.com
+#+OPTIONS: toc:2 author:t title:t ^:{}
+#+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
+
+* Overview
+This configuration is split into focused modules under =modules/=.
+Each module tangles to its own =.el= file and is loaded below.
+
+| Module           | Description                                      |
+|------------------+--------------------------------------------------|
+| [[file:modules/ui.org][ui.org]]           | Theme, font, splash screen, line numbers         |
+| [[file:modules/editor.org][editor.org]]       | Keybindings, editing defaults, paths, tramp, eww |
+| [[file:modules/lang-verilog.org][lang-verilog.org]] | SystemVerilog, verilog-ext, verible LSP          |
+| [[file:modules/lang-go.org][lang-go.org]]      | Go LSP and project detection                     |
+| [[file:modules/lang-jinja2.org][lang-jinja2.org]]  | Jinja2 template file associations                |
+| [[file:modules/org-mode.org][org-mode.org]]     | Org modern, export, babel, templates, bibtex     |
+| [[file:modules/projects.org][projects.org]]     | Projectile, prog-mode, Common Lisp               |
+| [[file:modules/tools.org][tools.org]]        | AI assistants, copilot, GDB, diagrams, mail      |
+
+Machine- and site-specific config lives *outside* this repo in
+=~/.config/doom-local/= (same pattern as =~/.localrc= for zsh): every
+=*.el= file there is loaded after the modules, =custom.el= there is used
+as =custom-file=, and a =snippets/= subdir is added to yasnippet.
+Identity overrides, site paths, and site snippets all go there so this
+repo stays portable.
+
+* Loader
+#+begin_src emacs-lisp :tangle yes
+(load! "modules/ui")
+(load! "modules/editor")
+(load! "modules/lang-verilog")
+(load! "modules/lang-go")
+(load! "modules/lang-jinja2")
+(load! "modules/org-mode")
+(load! "modules/projects")
+(load! "modules/tools")
+
+;; Machine/site-local overlay: untracked, lives outside the dotfiles repo.
+(let ((local-dir (expand-file-name "~/.config/doom-local/")))
+  (setq custom-file (expand-file-name "custom.el" local-dir))
+  (when (file-directory-p local-dir)
+    (dolist (f (sort (file-expand-wildcards (concat local-dir "*.el")) #'string<))
+      (unless (string-suffix-p "custom.el" f)
+        (load f nil t)))
+    (let ((snips (concat local-dir "snippets")))
+      (when (file-directory-p snips)
+        (after! yasnippet (add-to-list 'yas-snippet-dirs snips t))))))
+#+end_src

@@ -1,0 +1,7 @@
+# -*- mode: snippet -*-
+# name: Caption
+# uuid:
+# key: <cap
+# condition: t
+# --
+#+CAPTION:

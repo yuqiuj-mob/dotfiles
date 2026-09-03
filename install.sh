@@ -49,6 +49,10 @@ link config/bat/config         ~/.config/bat/config
 link config/git/ignore         ~/.config/git/ignore
 link config/lazygit/config.yml ~/.config/lazygit/config.yml
 
+# doom emacs (machine/site-local overlay lives in ~/.config/doom-local, untracked)
+link config/doom ~/.config/doom
+mkdir -p ~/.config/doom-local
+
 # misc home dotfiles
 link gitconfig ~/.gitconfig
 link ctags     ~/.ctags

@@ -1,0 +1,12 @@
+#+title: Jinja2
+#+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
+#+PROPERTY: header-args:emacs-lisp :tangle yes
+
+* File Associations
+Activate =jinja2-mode= for common Jinja template extensions.
+#+begin_src emacs-lisp
+(use-package! jinja2-mode
+  :mode (("\\.j2\\'"     . jinja2-mode)
+         ("\\.jinja\\'"  . jinja2-mode)
+         ("\\.jinja2\\'" . jinja2-mode)))
+#+end_src

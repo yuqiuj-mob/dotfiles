@@ -1,0 +1,111 @@
+#+title: Editor Defaults & Keybindings
+#+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
+#+PROPERTY: header-args:emacs-lisp :tangle yes
+
+* Keybindings
+** Avy (Jump Navigation)
+=C-M-;= prefix for character jumping, =M-g= prefix for word/line navigation.
+#+begin_src emacs-lisp
+(global-set-key (kbd "C-M-; C-M-;") 'avy-goto-char)
+(global-set-key (kbd "C-M-; ;")     'avy-goto-char)
+(global-set-key (kbd "C-M-; C-M-p") 'avy-goto-char-above)
+(global-set-key (kbd "C-M-; p")     'avy-goto-char-above)
+(global-set-key (kbd "C-M-; C-M-n") 'avy-goto-char-below)
+(global-set-key (kbd "C-M-; n")     'avy-goto-char-below)
+(global-set-key (kbd "C-M-; C-M-s") 'avy-goto-char-2)
+(global-set-key (kbd "C-M-; s")     'avy-goto-char-2)
+
+(global-set-key (kbd "M-g w")   'avy-goto-word-1)
+(global-set-key (kbd "M-g e")   'avy-goto-word-0)
+(global-set-key (kbd "M-g M-g") 'avy-goto-line)
+(global-set-key (kbd "M-g l")   'consult-line)
+(global-set-key (kbd "M-g M-l") 'consult-line)
+#+end_src
+
+** Editing Keys
+#+begin_src emacs-lisp
+(setq next-line-add-newlines t)
+(map! "C-h" #'backward-delete-char-untabify)
+(map! "M-g M-q" #'gptel)
+#+end_src
+
+** Window Movement
+Shift + arrow keys to move between windows.
+#+begin_src emacs-lisp
+(windmove-default-keybindings)
+#+end_src
+
+* Editing Defaults
+#+begin_src emacs-lisp
+(setq-default fill-column 72)
+(setq-default c-basic-offset 4)
+(setq lisp-indent-offset 4)
+(setq kill-whole-line t)
+(setq confirm-kill-emacs nil)
+(setq dired-movement-style t)
+(setq vterm-timer-delay 0.01)
+(setq gc-cons-threshold (* 1024 1024 1024))
+#+end_src
+
+* File Associations
+#+begin_src emacs-lisp
+(add-to-list 'auto-mode-alist '("\\.puml\\'" . plantuml-mode))
+(add-to-list 'auto-mode-alist '("\\.s?vh?\\'" . verilog-ts-mode))
+(add-to-list 'auto-mode-alist '("\\.inc\\'" . verilog-ts-mode))
+(add-to-list 'auto-mode-alist '("\\.epub\\'" . nov-mode))
+(add-to-list 'auto-mode-alist '("\\.f\\'" . conf-space-mode))
+#+end_src
+
+* Paths
+#+begin_src emacs-lisp
+(setq org-directory "~/org/")
+(setq org-roam-directory "~/org/roam/")
+#+end_src
+
+* File Locking
+Suppress file lock/supersession warnings (useful for remote/shared files).
+#+begin_src emacs-lisp
+(defun ask-user-about-supersession-threat (fn) "ignore")
+(defun ask-user-about-lock (file opponent) "always grab lock" t)
+#+end_src
+
+* Browser
+#+begin_src emacs-lisp
+(setq browse-url-browser-function 'eww-browse-url)
+(setq eww-search-prefix "https://www.google.com/search?q=")
+#+end_src
+
+* Searching
+** Xref with Dumb Jump
+Fallback xref backend for languages without LSP.
+#+begin_src emacs-lisp
+(add-hook 'xref-backend-functions #'dumb-jump-xref-activate)
+#+end_src
+
+** Code Syntax Highlighting in EWW
+Syntax-highlight =<pre>= blocks when browsing code in EWW.
+#+begin_src emacs-lisp
+(use-package shr-tag-pre-highlight
+  :after shr
+  :config
+  (add-to-list 'shr-external-rendering-functions
+               '(pre . shr-tag-pre-highlight)))
+#+end_src
+
+* Tramp
+Persistent SSH connections to avoid re-authentication overhead.
+#+begin_src emacs-lisp
+(customize-set-variable
+ 'tramp-ssh-controlmaster-options
+ (concat
+  "-o ControlPath=/tmp/ssh-ControlPath-%%r@%%h:%%p "
+  "-o ControlMaster=auto -o ControlPersist=yes"))
+#+end_src
+
+* CSV Mode
+#+begin_src emacs-lisp
+(after! csv-mode
+  (add-hook! 'csv-mode-hook
+    (csv-align-mode t)
+    (csv-header-line t)))
+#+end_src

@@ -1,0 +1,23 @@
+#+title: Go
+#+SETUPFILE: https://cdn.jsdelivr.net/gh/yuqiuj-mob/orgmin-theme@main/bootstrap-orgdoc.setup
+#+PROPERTY: header-args:emacs-lisp :tangle yes
+
+* LSP
+Auto-format and organize imports on save via LSP.
+#+begin_src emacs-lisp
+(defun lsp-go-install-save-hooks ()
+  (add-hook 'before-save-hook #'lsp-format-buffer t t)
+  (add-hook 'before-save-hook #'lsp-organize-imports t t))
+(add-hook 'go-mode-hook #'lsp-go-install-save-hooks)
+#+end_src
+
+* Project Detection
+Project root detected by =go.mod=.
+#+begin_src emacs-lisp
+(defun project-find-go-module (dir)
+  (when-let ((root (locate-dominating-file dir "go.mod")))
+    (cons 'go-module root)))
+(cl-defmethod project-root ((project (head go-module)))
+  (cdr project))
+(add-hook 'project-find-functions #'project-find-go-module)
+#+end_src

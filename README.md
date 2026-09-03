@@ -1,8 +1,8 @@
 # dotfiles
 
 Personal configs: zsh (oh-my-zsh + znap + p10k), tmux (+ sessionizer),
-starship, and a few small tool configs (zellij, ghostty, kitty, bat, git,
-lazygit, ctags).
+starship, Doom Emacs, and a few small tool configs (zellij, ghostty, kitty,
+bat, git, lazygit, ctags).
 
 ## Install
 
@@ -20,6 +20,10 @@ git clone <repo-url> ~/Repos/dotfiles
   site-specific PATH entries live here.
 - `~/.config/tmux/tmux-sessionizer.conf` — project list for the sessionizer;
   seeded from `tmux/tmux-sessionizer.conf.template` on first install.
+- `~/.config/doom-local/` — machine/site-local Doom Emacs overlay: every
+  `*.el` there loads after the tracked modules, `custom.el` there is used
+  as `custom-file`, and a `snippets/` subdir is added to yasnippet. Work
+  identity, site paths, and site snippets live here, never in the repo.
 
 ## Notes
 
