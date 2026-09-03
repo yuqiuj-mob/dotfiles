@@ -12,8 +12,30 @@
   (defvar my/verilog-ts-imenu-active nil
     "Non-nil while `verilog-ts' imenu index is being built.")
 
-  (defvar my/verilog-ts-imenu-instance-width 22
-    "Column width the instance name is padded to in imenu labels.")
+  (defvar my/verilog-ts-imenu-instance-width 20
+    "Instance-column width for the current index build (rebound per build).")
+
+  (defconst my/verilog-ts-imenu-instance-width-cap 40
+    "Upper bound for the instance column, so one long name can't push all
+type entries far to the right.")
+
+  (defconst my/verilog-ts-imenu-instance-gap 2
+    "Minimum spaces between the instance and type columns.")
+
+  (defun my/verilog-ts-imenu-max-instance-width ()
+    "Longest instance name in the buffer (0 if none), capped."
+    (let ((max 0))
+      (when-let* ((root (treesit-buffer-root-node))
+                  (tree (ignore-errors
+                          (treesit-induce-sparse-tree root verilog-ts-instance-re))))
+        (letrec ((walk (lambda (n)
+                         (when-let ((ts (car n)))
+                           (when (string-match verilog-ts-instance-re (treesit-node-type ts))
+                             (when-let ((inst (ignore-errors (verilog-ts--node-instance-name ts))))
+                               (setq max (max max (length inst))))))
+                         (mapc walk (cdr n)))))
+          (funcall walk tree)))
+      (min max my/verilog-ts-imenu-instance-width-cap)))
 
   ;; Preserve text properties (faces) on labels; the stock formatter uses
   ;; (format "%s" name), which strips them.
@@ -22,7 +44,8 @@
 
   (define-advice verilog-ts--imenu-create-index
       (:around (orig-fn &rest args) my/verilog-ts-imenu-flag)
-    (let ((my/verilog-ts-imenu-active t))
+    (let ((my/verilog-ts-imenu-active t)
+          (my/verilog-ts-imenu-instance-width (my/verilog-ts-imenu-max-instance-width)))
       (apply orig-fn args)))
 
   (define-advice verilog-ts--node-identifier-name
@@ -36,6 +59,7 @@
                 (concat
                  (propertize (format (format "%%-%ds" my/verilog-ts-imenu-instance-width) inst)
                              'face 'font-lock-function-name-face)
+                 (make-string my/verilog-ts-imenu-instance-gap ?\s)
                  (propertize name 'face 'shadow))
               name))
         name))))
