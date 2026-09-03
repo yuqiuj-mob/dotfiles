@@ -38,13 +38,13 @@ repo stays portable.
 (load! "modules/tools")
 
 ;; Machine/site-local overlay: untracked, lives outside the dotfiles repo.
-(let ((local-dir (expand-file-name "~/.config/doom-local/")))
-  (setq custom-file (expand-file-name "custom.el" local-dir))
-  (when (file-directory-p local-dir)
-    (dolist (f (sort (file-expand-wildcards (concat local-dir "*.el")) #'string<))
-      (unless (string-suffix-p "custom.el" f)
-        (load f nil t)))
-    (let ((snips (concat local-dir "snippets")))
-      (when (file-directory-p snips)
-        (after! yasnippet (add-to-list 'yas-snippet-dirs snips t))))))
+(setq custom-file (expand-file-name "~/.config/doom-local/custom.el"))
+(dolist (f (sort (file-expand-wildcards "~/.config/doom-local/*.el") #'string<))
+  (unless (string-suffix-p "custom.el" f)
+    (load f nil t)))
+;; deferred body must be self-contained: config.el is not lexically bound
+(after! yasnippet
+  (let ((snips (expand-file-name "~/.config/doom-local/snippets")))
+    (when (file-directory-p snips)
+      (add-to-list 'yas-snippet-dirs snips t))))
 #+end_src
