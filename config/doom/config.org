@@ -42,6 +42,10 @@ repo stays portable.
 (dolist (f (sort (file-expand-wildcards "~/.config/doom-local/*.el") #'string<))
   (unless (string-suffix-p "custom.el" f)
     (load f nil t)))
+;; Load custom-file LAST so Customize/`!`-marked safe local variables persist
+;; across reboots (without this, safe-local-variable marks never take effect).
+(when (file-exists-p custom-file)
+  (load custom-file nil t))
 ;; deferred body must be self-contained: config.el is not lexically bound
 (after! yasnippet
   (let ((snips (expand-file-name "~/.config/doom-local/snippets")))

@@ -38,6 +38,19 @@ Clean modern styling for org buffers: styled headlines, keywords, tables.
     (global-org-modern-mode))
 #+end_src
 
+** Indent Bars
+=org-modern-indent= draws org-modern-style bars along indented content
+(replaces org-indent visuals). Org body text stays in the default fixed-pitch
+font, consistent with markdown and code buffers.
+
+Mixed-pitch (proportional prose font) is intentionally left off — re-enable by
+adding =(use-package! mixed-pitch :hook (org-mode . mixed-pitch-mode))= here.
+#+begin_src emacs-lisp
+(use-package! org-modern-indent
+  :after org-modern
+  :hook (org-mode . org-modern-indent-mode))
+#+end_src
+
 * Agenda
 #+begin_src emacs-lisp
 (defun load-org-agenda ()

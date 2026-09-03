@@ -49,8 +49,19 @@
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
                                         ;(unpin! t)
 ;; Themes
-(package! modus-themes)
+;; Pin >= 08820b2 "BREAKING Be much more conservative with :inherit": earlier
+;; versions define (link :inherit button), which cycles under Emacs 31's new
+;; default (button :inherit link) and crashes on frame creation.
+(package! modus-themes :pin "a3e7ba280524dfd4bdaf3169ef5901ac91dadb01")
 (package! ef-themes)
+
+;; UI polish (Prot's modus-adjacent toolkit + org prose)
+(package! spacious-padding)   ; breathing room: window padding, clean borders
+(package! pulsar)             ; pulse the current line on jumps
+(package! lin)                ; smarter hl-line in list/selection buffers
+(package! mixed-pitch)        ; proportional font for org prose, mono for code
+(package! org-modern-indent    ; org-modern-style bars for indented content
+  :recipe (:host github :repo "jdtsmith/org-modern-indent"))
 (package! org-super-agenda)
 (package! smooth-scroll)
 

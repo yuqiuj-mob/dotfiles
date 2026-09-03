@@ -11,17 +11,41 @@
 #+end_src
 
 * Theme
-Using =modus-vivendi-deuteranopia= for accessibility and readability on dark backgrounds.
+Using =modus-vivendi= — pure black (=#000000=) bg, near-white fg: the
+highest-contrast, easy-on-the-eyes look. Plain (not =-deuteranopia=) so the
+full vivid palette is available. Package is pinned in =packages.el= to a
+version that avoids the Emacs 31 =button/link= face-inheritance cycle.
+
+Palette overrides blend the UI the way the monokai themes do: line-number
+column merges into the background and the mode line is borderless.
 #+begin_src emacs-lisp
 (setq default-frame-alist '((undecorated . t)))
 (scroll-bar-mode -1)
-(setq doom-theme 'modus-vivendi-deuteranopia)
+
+;; Must be set before the theme is enabled (Doom does that after this file).
+(setq modus-themes-common-palette-overrides
+      '(;; line-number column blends into the main background
+        (bg-line-number-active   bg-main)
+        (bg-line-number-inactive bg-main)
+        (fg-line-number-inactive "gray45")
+        ;; borderless, blended mode line
+        (border-mode-line-active   bg-mode-line-active)
+        (border-mode-line-inactive bg-mode-line-inactive)
+        ;; subtle fringe so it doesn't draw a visible edge
+        (fringe unspecified)))
+
+;; Bold keywords/types/etc. (comments stay upright — italic left off).
+(setq modus-themes-bold-constructs t)
+(setq modus-themes-italic-constructs nil)
+
+(setq doom-theme 'modus-vivendi)
 #+end_src
 
 ** Org Headline Colors
-Custom rainbow palette for org headings. Uses the warm-to-cool gradient from
-=f94144= (red) through =277da1= (blue).
-#+begin_src emacs-lisp
+Disabled to use the theme's native org heading colors/format. To restore the
+custom warm-to-cool rainbow gradient (=f94144= red through =277da1= blue),
+re-enable the block below.
+#+begin_src emacs-lisp :tangle no
 (defun col-strip (col-str)
   "Convert a dash-separated hex color string into a list of #RRGGBB strings."
   (butlast (split-string (mapconcat (lambda (x) (concat "#" x " "))
@@ -51,11 +75,49 @@ Custom rainbow palette for org headings. Uses the warm-to-cool gradient from
 FiraCode with Nerd Font glyphs for icons. Ligatures are stripped down to avoid
 conflicts with programming symbols.
 #+begin_src emacs-lisp
-(setq doom-font (font-spec :family "FiraCode Nerd Font" :size 11.0))
+;; :weight medium counters the thinner XWayland/X11 font rendering.
+(setq doom-font (font-spec :family "FiraCode Nerd Font" :size 11.0 :weight 'medium))
+;; Proportional font for org prose via mixed-pitch (Charter = serif alt).
+(setq doom-variable-pitch-font (font-spec :family "Lato" :size 12.0))
 
 (plist-put! +ligatures-extra-symbols
             :and nil :or nil :for nil :not nil :true nil :false nil
             :int nil :float nil :str nil :bool nil :list nil)
+#+end_src
+
+* UI Polish
+Prot's modus-adjacent toolkit: frame/window padding, current-line pulse on
+jumps, and a cleaner =hl-line= in list buffers.
+#+begin_src emacs-lisp
+(use-package! spacious-padding
+  :config
+  ;; nil: modus's palette overrides already give a borderless mode line, and
+  ;; the subtle path builds an invalid ':underline (:color unspecified ...)'
+  ;; that Emacs 31 rejects at frame init.
+  (setq spacious-padding-subtle-mode-line nil)
+  ;; Thin bezel + minimal mode-line box. Defaults are 15 border / 6 mode-line,
+  ;; which read as too aggressive; doom-modeline is already font-height+4 tall,
+  ;; so the extra mode-line height was this box.
+  (setq spacious-padding-widths
+        '( :internal-border-width 5
+           :header-line-width 2
+           :mode-line-width 2
+           :tab-width 2
+           :right-divider-width 20
+           :scroll-bar-width 0
+           :fringe-width 6))
+  (spacious-padding-mode 1))
+
+(use-package! pulsar
+  :config
+  (setq pulsar-pulse t
+        pulsar-delay 0.055)
+  (pulsar-global-mode 1))
+
+(use-package! lin
+  :config
+  (setq lin-face 'lin-cyan)
+  (lin-global-mode 1))
 #+end_src
 
 * Splash Screen

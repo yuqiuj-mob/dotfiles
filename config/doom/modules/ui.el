@@ -5,37 +5,63 @@
 
 (setq default-frame-alist '((undecorated . t)))
 (scroll-bar-mode -1)
-(setq doom-theme 'modus-vivendi-deuteranopia)
 
-(defun col-strip (col-str)
-  "Convert a dash-separated hex color string into a list of #RRGGBB strings."
-  (butlast (split-string (mapconcat (lambda (x) (concat "#" x " "))
-                                    (split-string col-str "-")
-                                    "") " ")))
+;; Must be set before the theme is enabled (Doom does that after this file).
+(setq modus-themes-common-palette-overrides
+      '(;; line-number column blends into the main background
+        (bg-line-number-active   bg-main)
+        (bg-line-number-inactive bg-main)
+        (fg-line-number-inactive "gray45")
+        ;; borderless, blended mode line
+        (border-mode-line-active   bg-mode-line-active)
+        (border-mode-line-inactive bg-mode-line-inactive)
+        ;; subtle fringe so it doesn't draw a visible edge
+        (fringe unspecified)))
 
-(setq my/org-heading-colors
-      (col-strip "f94144-f3722c-f8961e-f9844a-f9c74f-90be6d-43aa8b-4d908e-577590-277da1"))
+;; Bold keywords/types/etc. (comments stay upright — italic left off).
+(setq modus-themes-bold-constructs t)
+(setq modus-themes-italic-constructs nil)
 
-(after! org
-  (custom-set-faces!
-    `(outline-1   :foreground ,(nth 0 my/org-heading-colors))
-    `(outline-2   :foreground ,(nth 1 my/org-heading-colors))
-    `(outline-3   :foreground ,(nth 2 my/org-heading-colors))
-    `(outline-4   :foreground ,(nth 3 my/org-heading-colors))
-    `(outline-5   :foreground ,(nth 4 my/org-heading-colors))
-    `(outline-6   :foreground ,(nth 5 my/org-heading-colors))
-    `(org-level-1 :foreground ,(nth 0 my/org-heading-colors))
-    `(org-level-2 :foreground ,(nth 1 my/org-heading-colors))
-    `(org-level-3 :foreground ,(nth 2 my/org-heading-colors))
-    `(org-level-4 :foreground ,(nth 3 my/org-heading-colors))
-    `(org-level-5 :foreground ,(nth 4 my/org-heading-colors))
-    `(org-level-6 :foreground ,(nth 5 my/org-heading-colors))))
+(setq doom-theme 'modus-vivendi)
 
-(setq doom-font (font-spec :family "FiraCode Nerd Font" :size 11.0))
+;; :weight medium counters the thinner XWayland/X11 font rendering.
+(setq doom-font (font-spec :family "FiraCode Nerd Font" :size 11.0 :weight 'medium))
+;; Proportional font for org prose via mixed-pitch (Charter = serif alt).
+(setq doom-variable-pitch-font (font-spec :family "Lato" :size 12.0))
 
 (plist-put! +ligatures-extra-symbols
             :and nil :or nil :for nil :not nil :true nil :false nil
             :int nil :float nil :str nil :bool nil :list nil)
+
+(use-package! spacious-padding
+  :config
+  ;; nil: modus's palette overrides already give a borderless mode line, and
+  ;; the subtle path builds an invalid ':underline (:color unspecified ...)'
+  ;; that Emacs 31 rejects at frame init.
+  (setq spacious-padding-subtle-mode-line nil)
+  ;; Thin bezel + minimal mode-line box. Defaults are 15 border / 6 mode-line,
+  ;; which read as too aggressive; doom-modeline is already font-height+4 tall,
+  ;; so the extra mode-line height was this box.
+  (setq spacious-padding-widths
+        '( :internal-border-width 5
+           :header-line-width 2
+           :mode-line-width 2
+           :tab-width 2
+           :right-divider-width 20
+           :scroll-bar-width 0
+           :fringe-width 6))
+  (spacious-padding-mode 1))
+
+(use-package! pulsar
+  :config
+  (setq pulsar-pulse t
+        pulsar-delay 0.055)
+  (pulsar-global-mode 1))
+
+(use-package! lin
+  :config
+  (setq lin-face 'lin-cyan)
+  (lin-global-mode 1))
 
 (remove-hook '+doom-dashboard-functions #'doom-dashboard-widget-shortmenu)
 (add-hook! '+doom-dashboard-functions :append

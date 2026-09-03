@@ -26,6 +26,10 @@
   :config
     (global-org-modern-mode))
 
+(use-package! org-modern-indent
+  :after org-modern
+  :hook (org-mode . org-modern-indent-mode))
+
 (defun load-org-agenda ()
   (interactive)
   (setq org-agenda-files
