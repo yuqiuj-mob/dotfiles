@@ -103,7 +103,9 @@ jumps, and a cleaner =hl-line= in list buffers.
            :header-line-width 2
            :mode-line-width 2
            :tab-width 2
-           :right-divider-width 20
+           ;; keep the divider thin — a wide one leaves a background-colored
+           ;; gap through the mode line at side-by-side split boundaries
+           :right-divider-width 1
            :scroll-bar-width 0
            :fringe-width 6))
   (spacious-padding-mode 1))
@@ -118,6 +120,18 @@ jumps, and a cleaner =hl-line= in list buffers.
   :config
   (setq lin-face 'lin-cyan)
   (lin-global-mode 1))
+#+end_src
+
+* Mode Line
+Light declutter of doom-modeline: project-relative path (shorter), no
+encoding segment, capped git-branch length, and a live word count in org and
+markdown buffers. Keeps the stock doom-modeline style otherwise.
+#+begin_src emacs-lisp
+(after! doom-modeline
+  (setq doom-modeline-buffer-file-name-style 'relative-to-project
+        doom-modeline-buffer-encoding nil
+        doom-modeline-vcs-max-length 15
+        doom-modeline-enable-word-count t))
 #+end_src
 
 * Splash Screen

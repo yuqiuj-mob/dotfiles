@@ -47,7 +47,9 @@
            :header-line-width 2
            :mode-line-width 2
            :tab-width 2
-           :right-divider-width 20
+           ;; keep the divider thin — a wide one leaves a background-colored
+           ;; gap through the mode line at side-by-side split boundaries
+           :right-divider-width 1
            :scroll-bar-width 0
            :fringe-width 6))
   (spacious-padding-mode 1))
@@ -62,6 +64,12 @@
   :config
   (setq lin-face 'lin-cyan)
   (lin-global-mode 1))
+
+(after! doom-modeline
+  (setq doom-modeline-buffer-file-name-style 'relative-to-project
+        doom-modeline-buffer-encoding nil
+        doom-modeline-vcs-max-length 15
+        doom-modeline-enable-word-count t))
 
 (remove-hook '+doom-dashboard-functions #'doom-dashboard-widget-shortmenu)
 (add-hook! '+doom-dashboard-functions :append
