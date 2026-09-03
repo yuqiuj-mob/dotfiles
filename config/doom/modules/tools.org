@@ -266,3 +266,27 @@ Syntax highlighting for =.hjson= (unquoted keys, comments, ='''= strings).
 (use-package! hjson-mode
   :mode "\\.hjson\\'")
 #+end_src
+
+* PDF Horizontal Scroll
+Pan an enlarged PDF page with the mouse's horizontal wheel. =pdf-view= only
+wires the vertical wheel, so the horizontal wheel events (=wheel-left=/=wheel-right=
+on Emacs 30+, =mouse-6=/=mouse-7= on X11) fall through to text hscroll, which
+=pdf-view= ignores. Bind them in the major-mode map (which overrides the global
+=mwheel= binding) to =image-*-hscroll=, which pans the page via the same
+=image-set-window-hscroll= that =pdf-view= uses internally.
+#+begin_src emacs-lisp
+(defvar my/pdf-view-hscroll-columns 4
+  "Columns to pan per horizontal wheel tick in `pdf-view-mode'.")
+
+(after! pdf-view
+  (defun my/pdf-view-hscroll-right ()
+    (interactive)
+    (image-forward-hscroll my/pdf-view-hscroll-columns))
+  (defun my/pdf-view-hscroll-left ()
+    (interactive)
+    (image-backward-hscroll my/pdf-view-hscroll-columns))
+  (dolist (ev '("<wheel-right>" "<mouse-7>"))
+    (define-key pdf-view-mode-map (kbd ev) #'my/pdf-view-hscroll-right))
+  (dolist (ev '("<wheel-left>" "<mouse-6>"))
+    (define-key pdf-view-mode-map (kbd ev) #'my/pdf-view-hscroll-left)))
+#+end_src

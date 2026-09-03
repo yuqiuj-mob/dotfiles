@@ -188,3 +188,18 @@ When invoked outside embark (e.g. `M-x'), prompts for a file."
 
 (use-package! hjson-mode
   :mode "\\.hjson\\'")
+
+(defvar my/pdf-view-hscroll-columns 4
+  "Columns to pan per horizontal wheel tick in `pdf-view-mode'.")
+
+(after! pdf-view
+  (defun my/pdf-view-hscroll-right ()
+    (interactive)
+    (image-forward-hscroll my/pdf-view-hscroll-columns))
+  (defun my/pdf-view-hscroll-left ()
+    (interactive)
+    (image-backward-hscroll my/pdf-view-hscroll-columns))
+  (dolist (ev '("<wheel-right>" "<mouse-7>"))
+    (define-key pdf-view-mode-map (kbd ev) #'my/pdf-view-hscroll-right))
+  (dolist (ev '("<wheel-left>" "<mouse-6>"))
+    (define-key pdf-view-mode-map (kbd ev) #'my/pdf-view-hscroll-left)))
