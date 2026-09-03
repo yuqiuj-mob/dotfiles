@@ -4,6 +4,11 @@
     (setq verilog-auto-newline nil))
 
 (after! verilog-ts-mode
+  ;; Drop the earlier globally-scoped advice (renamed since) so a config
+  ;; reload doesn't stack it on the scoped one and double the instance name.
+  (advice-remove 'verilog-ts--node-identifier-name
+                 'verilog-ts--node-identifier-name@verilog-ts-imenu-instance-name)
+
   (defvar my/verilog-ts-imenu-active nil
     "Non-nil while `verilog-ts' imenu index is being built.")
 
