@@ -3,6 +3,18 @@
     (setq verilog-ts-indent-level 3)
     (setq verilog-auto-newline nil))
 
+(after! verilog-ts-mode
+  (define-advice verilog-ts--node-identifier-name
+      (:around (orig-fn node) verilog-ts-imenu-instance-name)
+    (let ((name (funcall orig-fn node)))
+      (if (and node
+               (string-match verilog-ts-instance-re (treesit-node-type node)))
+          (let ((inst (ignore-errors (verilog-ts--node-instance-name node))))
+            (if (and inst (not (string-empty-p inst)))
+                (format "%s %s" name inst)
+              name))
+        name))))
+
 (use-package! verilog-ext
   :hook
     (verilog-ts-mode . verilog-ext-mode)

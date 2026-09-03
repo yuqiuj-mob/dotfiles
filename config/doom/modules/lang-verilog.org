@@ -12,6 +12,26 @@ highlighting and structural navigation than the built-in =verilog-mode=.
     (setq verilog-auto-newline nil))
 #+end_src
 
+** imenu: instance names
+By default =verilog-ts-mode= labels instance entries by module *type* only, so
+imenu is searchable by module name but not instance name. Advise the shared
+name function to return =module_type instance_name= for instances (reads like
+the SystemVerilog declaration), making both searchable. Non-instance nodes are
+untouched.
+#+begin_src emacs-lisp
+(after! verilog-ts-mode
+  (define-advice verilog-ts--node-identifier-name
+      (:around (orig-fn node) verilog-ts-imenu-instance-name)
+    (let ((name (funcall orig-fn node)))
+      (if (and node
+               (string-match verilog-ts-instance-re (treesit-node-type node)))
+          (let ((inst (ignore-errors (verilog-ts--node-instance-name node))))
+            (if (and inst (not (string-empty-p inst)))
+                (format "%s %s" name inst)
+              name))
+        name))))
+#+end_src
+
 * verilog-ext
 Extended features: LSP integration, flycheck (verible), tree-sitter tags,
 port/hierarchy navigation, formatting.
