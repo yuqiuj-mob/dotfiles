@@ -4,14 +4,23 @@
     (setq verilog-auto-newline nil))
 
 (after! verilog-ts-mode
+  (defvar my/verilog-ts-imenu-active nil
+    "Non-nil while `verilog-ts' imenu index is being built.")
+
+  (define-advice verilog-ts--imenu-create-index
+      (:around (orig-fn &rest args) my/verilog-ts-imenu-flag)
+    (let ((my/verilog-ts-imenu-active t))
+      (apply orig-fn args)))
+
   (define-advice verilog-ts--node-identifier-name
-      (:around (orig-fn node) verilog-ts-imenu-instance-name)
+      (:around (orig-fn node) my/verilog-ts-imenu-instance-name)
     (let ((name (funcall orig-fn node)))
-      (if (and node
+      (if (and my/verilog-ts-imenu-active
+               node
                (string-match verilog-ts-instance-re (treesit-node-type node)))
           (let ((inst (ignore-errors (verilog-ts--node-instance-name node))))
             (if (and inst (not (string-empty-p inst)))
-                (format "%s %s" name inst)
+                (format "%s:%s" inst name)
               name))
         name))))
 

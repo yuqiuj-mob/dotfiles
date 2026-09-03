@@ -14,20 +14,31 @@ highlighting and structural navigation than the built-in =verilog-mode=.
 
 ** imenu: instance names
 By default =verilog-ts-mode= labels instance entries by module *type* only, so
-imenu is searchable by module name but not instance name. Advise the shared
-name function to return =module_type instance_name= for instances (reads like
-the SystemVerilog declaration), making both searchable. Non-instance nodes are
-untouched.
+imenu is searchable by module name but not instance name. Relabel instances as
+=instance_name:module_type= so both are searchable.
+
+Scoped to imenu only via a dynamic flag bound around index creation, so the
+=which-func= breadcrumb (which shares the same name function) is left at its
+stock behavior.
 #+begin_src emacs-lisp
 (after! verilog-ts-mode
+  (defvar my/verilog-ts-imenu-active nil
+    "Non-nil while `verilog-ts' imenu index is being built.")
+
+  (define-advice verilog-ts--imenu-create-index
+      (:around (orig-fn &rest args) my/verilog-ts-imenu-flag)
+    (let ((my/verilog-ts-imenu-active t))
+      (apply orig-fn args)))
+
   (define-advice verilog-ts--node-identifier-name
-      (:around (orig-fn node) verilog-ts-imenu-instance-name)
+      (:around (orig-fn node) my/verilog-ts-imenu-instance-name)
     (let ((name (funcall orig-fn node)))
-      (if (and node
+      (if (and my/verilog-ts-imenu-active
+               node
                (string-match verilog-ts-instance-re (treesit-node-type node)))
           (let ((inst (ignore-errors (verilog-ts--node-instance-name node))))
             (if (and inst (not (string-empty-p inst)))
-                (format "%s %s" name inst)
+                (format "%s:%s" inst name)
               name))
         name))))
 #+end_src
