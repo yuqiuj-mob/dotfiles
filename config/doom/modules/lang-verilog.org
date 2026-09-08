@@ -6,87 +6,288 @@
 Tree-sitter based major mode for SystemVerilog. Provides better syntax
 highlighting and structural navigation than the built-in =verilog-mode=.
 #+begin_src emacs-lisp
+;;; -*- lexical-binding: t; -*-   ; first line of the tangled lang-verilog.el
 (use-package! verilog-ts-mode
     :config
     (setq verilog-ts-indent-level 3)
     (setq verilog-auto-newline nil))
 #+end_src
 
-** imenu: instance names
-By default =verilog-ts-mode= labels instance entries by module *type* only, so
-imenu is searchable by module name but not instance name. Relabel instances so
-both are searchable, laid out as two columns: the instance name (in a distinct
-color) followed by the module type (dimmed).
+** imenu: categorized index
+The stock =verilog-ts-mode= index is a tree keyed by module name, so
+=consult-imenu= shows one flat list with no grouping. Replace it with an
+Elisp-style categorized index: *Modules, Ports, Parameters, Typedefs,
+Signals, Instances, Always, Functions, Generates*. Every entry is two
+columns: the name (faced per category) and a dimmed detail: port header,
+param kind/type/value, signal type plus unpacked dims, instance module
+type, always label/sensitivity, generate construct kind. The name column
+width is computed per category (capped) so the detail column aligns.
 
-The instance column width is computed per index build as the longest instance
-name in the buffer (capped), so the type column stays aligned even for long
-names, always with a gap.
+What is collected, straight from the tree-sitter parse:
+- Ports: ANSI headers, where a continuation port (=input logic a, b=)
+  inherits the header of =a=, plus non-ANSI =input clk;= bodies.
+- Parameters: one entry per name, from both the =#( )= header and the body.
+- Signals: module/interface scope only. Locals inside always/function/task
+  bodies and struct members are skipped; generate-block signals are kept.
+- Instances: one entry per instance name, so =u_a (...), u_b (...);= is two.
+- Always: named by the =begin : label= when present, else the keyword.
+- Generates: named blocks only.
 
-Scoped to imenu only via a dynamic flag bound around index creation, so the
-=which-func= breadcrumb (which shares the same name function) keeps its stock
-behavior. The label formatter is swapped for one that preserves text
-properties, since the default =(format "%s" name)= would strip the faces.
+Installed through a late =verilog-ts-mode-hook= so it wins over anything
+=verilog-ext-mode= sets. Costs ~0.1 s on a 1200-line module (imenu caches
+the index between rescans).
 #+begin_src emacs-lisp
+;; Drop the advice from the earlier instance-only version so a config reload
+;; doesn't leave it stacked on the stock index builder.
 (after! verilog-ts-mode
-  ;; Drop the earlier globally-scoped advice (renamed since) so a config
-  ;; reload doesn't stack it on the scoped one and double the instance name.
-  (advice-remove 'verilog-ts--node-identifier-name
-                 'verilog-ts--node-identifier-name@verilog-ts-imenu-instance-name)
+  (dolist (adv '((verilog-ts--node-identifier-name . verilog-ts--node-identifier-name@verilog-ts-imenu-instance-name)
+                 (verilog-ts--node-identifier-name . verilog-ts--node-identifier-name@my/verilog-ts-imenu-instance-name)
+                 (verilog-ts--imenu-create-index   . verilog-ts--imenu-create-index@my/verilog-ts-imenu-flag)))
+    (advice-remove (car adv) (cdr adv))))
 
-  (defvar my/verilog-ts-imenu-active nil
-    "Non-nil while `verilog-ts' imenu index is being built.")
+(require 'cl-lib)
+(require 'treesit)
+(require 'imenu)
 
-  (defvar my/verilog-ts-imenu-instance-width 20
-    "Instance-column width for the current index build (rebound per build).")
+(defconst my/verilog-ts-imenu-name-width-cap 40
+  "Upper bound for the name column, so one long name can't push the rest right.")
 
-  (defconst my/verilog-ts-imenu-instance-width-cap 40
-    "Upper bound for the instance column, so one long name can't push all
-type entries far to the right.")
+(defconst my/verilog-ts-imenu-gap 2
+  "Minimum spaces between the name and detail columns.")
 
-  (defconst my/verilog-ts-imenu-instance-gap 2
-    "Minimum spaces between the instance and type columns.")
+(defconst my/verilog-ts-imenu-local-scope-re
+  (rx bos (or "statement" "function_body_declaration" "task_body_declaration"
+              "struct_union_member" "class_declaration" "tf_port_item")
+      eos)
+  "Node types whose descendants are locals, not module-scope signals.")
 
-  (defun my/verilog-ts-imenu-max-instance-width ()
-    "Longest instance name in the buffer (0 if none), capped."
-    (let ((max 0))
-      (when-let* ((root (treesit-buffer-root-node))
-                  (tree (ignore-errors
-                          (treesit-induce-sparse-tree root verilog-ts-instance-re))))
-        (letrec ((walk (lambda (n)
-                         (when-let ((ts (car n)))
-                           (when (string-match verilog-ts-instance-re (treesit-node-type ts))
-                             (when-let ((inst (ignore-errors (verilog-ts--node-instance-name ts))))
-                               (setq max (max max (length inst))))))
-                         (mapc walk (cdr n)))))
-          (funcall walk tree)))
-      (min max my/verilog-ts-imenu-instance-width-cap)))
+;;; helpers
 
-  ;; Preserve text properties (faces) on labels; the stock formatter uses
-  ;; (format "%s" name), which strips them.
-  (setq verilog-ts-imenu-format-item-label-function
-        (lambda (_type name) name))
+(defun my/verilog-ts-imenu--text (node)
+  "Whitespace-collapsed text of NODE, or nil if NODE is nil or blank."
+  (when node
+    (let ((s (string-trim (replace-regexp-in-string "[ \t\n]+" " " (treesit-node-text node t)))))
+      (unless (string-empty-p s) s))))
 
-  (define-advice verilog-ts--imenu-create-index
-      (:around (orig-fn &rest args) my/verilog-ts-imenu-flag)
-    (let ((my/verilog-ts-imenu-active t)
-          (my/verilog-ts-imenu-instance-width (my/verilog-ts-imenu-max-instance-width)))
-      (apply orig-fn args)))
+(defun my/verilog-ts-imenu--nodes (regexp)
+  "All nodes in the buffer whose type matches REGEXP, in buffer order."
+  (let (acc)
+    (cl-labels ((walk (tree)
+                  (when (car tree) (push (car tree) acc))
+                  (mapc #'walk (cdr tree))))
+      (when-let* ((tree (treesit-induce-sparse-tree (treesit-buffer-root-node) regexp nil 1000)))
+        (walk tree)))
+    (nreverse acc)))
 
-  (define-advice verilog-ts--node-identifier-name
-      (:around (orig-fn node) my/verilog-ts-imenu-instance-name)
-    (let ((name (funcall orig-fn node)))
-      (if (and my/verilog-ts-imenu-active
-               node
-               (string-match verilog-ts-instance-re (treesit-node-type node)))
-          (let ((inst (ignore-errors (verilog-ts--node-instance-name node))))
-            (if (and inst (not (string-empty-p inst)))
-                (concat
-                 (propertize (format (format "%%-%ds" my/verilog-ts-imenu-instance-width) inst)
-                             'face 'font-lock-function-name-face)
-                 (make-string my/verilog-ts-imenu-instance-gap ?\s)
-                 (propertize name 'face 'shadow))
-              name))
-        name))))
+(defun my/verilog-ts-imenu--child (node regexp)
+  "First direct named child of NODE whose type matches REGEXP."
+  (treesit-search-subtree node regexp nil nil 1))
+
+(defun my/verilog-ts-imenu--ancestor (node regexp)
+  "Nearest ancestor of NODE whose type matches REGEXP, or nil."
+  (let ((p (treesit-node-parent node)))
+    (while (and p (not (string-match-p regexp (treesit-node-type p))))
+      (setq p (treesit-node-parent p)))
+    p))
+
+(defun my/verilog-ts-imenu--trunc (s n)
+  (if (and s (> (length s) n)) (concat (substring s 0 (1- n)) "…") s))
+
+(defun my/verilog-ts-imenu--dims (node name-node)
+  "Text of NODE after NAME-NODE and before any `=', e.g. unpacked dims `[0:15]'."
+  (let* ((s (buffer-substring-no-properties (treesit-node-end name-node) (treesit-node-end node)))
+         (d (string-trim (replace-regexp-in-string "[ \t\n]+" " " (car (split-string s "="))))))
+    (unless (string-empty-p d) d)))
+
+(defun my/verilog-ts-imenu--join (&rest parts)
+  (string-join (delq nil parts) " "))
+
+;;; categories: each returns ((NAME DETAIL POS) ...)
+
+(defun my/verilog-ts-imenu--modules ()
+  (cl-loop for n in (my/verilog-ts-imenu--nodes
+                     (rx bos (or "module" "interface" "program" "package" "class") "_declaration" eos))
+           for name = (or (ignore-errors (verilog-ts--node-identifier-name n))
+                          (treesit-node-text (treesit-search-subtree n (rx bos "simple_identifier" eos)) t))
+           for kind = (car (split-string (treesit-node-type n) "_"))
+           when name collect (list name kind (treesit-node-start n))))
+
+(defun my/verilog-ts-imenu--ports ()
+  "ANSI and non-ANSI ports.
+A continuation port (`input logic a, b') inherits the header of `a'."
+  (let (acc header last-parent)
+    (dolist (n (my/verilog-ts-imenu--nodes (rx bos (? "ansi_") "port_declaration" eos)))
+      (if (string= (treesit-node-type n) "port_declaration")
+          ;; non-ANSI: (port_declaration (input_declaration [type] (list_of_*_identifiers id...)))
+          (let* ((decl (treesit-node-child n 0 t))
+                 (dir (car (split-string (treesit-node-type decl) "_")))
+                 (type (my/verilog-ts-imenu--text (my/verilog-ts-imenu--child decl "_port_type\\'")))
+                 (ids (my/verilog-ts-imenu--child decl (rx bos "list_of_")))
+                 (ids (and ids (treesit-node-children ids t))))
+            (dolist (id ids)
+              (when (string= (treesit-node-type id) "simple_identifier")
+                (push (list (treesit-node-text id t) (my/verilog-ts-imenu--join dir type) (treesit-node-start id)) acc))))
+        (let* ((parent (treesit-node-parent n))
+               (name-node (treesit-node-child-by-field-name n "port_name"))
+               (name (and name-node (treesit-node-text name-node t)))
+               (hdr (my/verilog-ts-imenu--text (my/verilog-ts-imenu--child n "_port_header\\'"))))
+          (unless (equal parent last-parent) (setq header nil last-parent parent))
+          (when hdr (setq header hdr))
+          (when name
+            (push (list name (my/verilog-ts-imenu--join header (my/verilog-ts-imenu--dims n name-node))
+                        (treesit-node-start n))
+                  acc)))))
+    (nreverse acc)))
+
+(defun my/verilog-ts-imenu--params ()
+  "parameter / localparam in the #( ) header and the body; one entry per name."
+  (cl-loop for n in (my/verilog-ts-imenu--nodes (rx bos (or "param" "type") "_assignment" eos))
+           for name = (treesit-node-text (my/verilog-ts-imenu--child n (rx bos "simple_identifier" eos)) t)
+           for decl = (my/verilog-ts-imenu--ancestor n (rx bos (? "local_") "parameter_declaration" eos))
+           for kw = (if (and decl (string-prefix-p "local" (treesit-node-type decl))) "localparam" "parameter")
+           for type = (if (string= (treesit-node-type n) "type_assignment") "type"
+                        (my/verilog-ts-imenu--text
+                         (and decl (my/verilog-ts-imenu--child decl (rx bos "data_type_or_implicit" eos)))))
+           for val = (and (> (treesit-node-child-count n t) 1)
+                          (my/verilog-ts-imenu--text (treesit-node-child n -1 t)))
+           for detail = (string-join (delq nil (list kw type (and val (concat "= " (my/verilog-ts-imenu--trunc val 24))))) " ")
+           when name collect (list name detail (treesit-node-start n))))
+
+(defun my/verilog-ts-imenu--typedefs ()
+  (cl-loop for n in (my/verilog-ts-imenu--nodes (rx bos "type_declaration" eos))
+           for name = (treesit-node-text (treesit-node-child-by-field-name n "type_name") t)
+           for dt = (my/verilog-ts-imenu--text (my/verilog-ts-imenu--child n (rx bos (or "data" "class") "_type" eos)))
+           for detail = (my/verilog-ts-imenu--trunc (string-trim (car (split-string (or dt "") "{"))) 30)
+           when name collect (list name detail (treesit-node-start n))))
+
+(defun my/verilog-ts-imenu--signals ()
+  "Module-scope nets, variables and genvars.
+Locals inside always/function/task bodies are skipped."
+  (let (acc)
+    (dolist (n (my/verilog-ts-imenu--nodes
+                (rx bos (or "variable_decl_assignment" "net_decl_assignment" "genvar_declaration") eos)))
+      (unless (my/verilog-ts-imenu--ancestor n my/verilog-ts-imenu-local-scope-re)
+        (if (string= (treesit-node-type n) "genvar_declaration")
+            (when-let* ((names (my/verilog-ts-imenu--text
+                               (my/verilog-ts-imenu--child n (rx bos "list_of_genvar_identifiers" eos)))))
+              (push (list names "genvar" (treesit-node-start n)) acc))
+          (let* ((decl (treesit-node-parent (treesit-node-parent n)))   ; list_of_* -> declaration
+                 (name-node (my/verilog-ts-imenu--child n (rx bos "simple_identifier" eos)))
+                 (name (and name-node (treesit-node-text name-node t)))
+                 (type (cl-loop for c in (treesit-node-children decl t)
+                                until (string-prefix-p "list_of_" (treesit-node-type c))
+                                for s = (my/verilog-ts-imenu--text c)
+                                when s collect s)))
+            (when name
+              (push (list name
+                          (my/verilog-ts-imenu--join (my/verilog-ts-imenu--trunc (string-join type " ") 30)
+                                                     (my/verilog-ts-imenu--dims n name-node))
+                          (treesit-node-start n))
+                    acc))))))
+    (nreverse acc)))
+
+(defun my/verilog-ts-imenu--instances ()
+  "One entry per instance name; the module/interface type is the detail column."
+  (cl-loop for n in (my/verilog-ts-imenu--nodes (rx bos "hierarchical_instance" eos))
+           for name = (my/verilog-ts-imenu--text (my/verilog-ts-imenu--child n (rx bos "name_of_instance" eos)))
+           for type = (treesit-node-text
+                       (my/verilog-ts-imenu--child (treesit-node-parent n) (rx bos "simple_identifier" eos)) t)
+           when name collect (list name (or type "") (treesit-node-start n))))
+
+(defun my/verilog-ts-imenu--always ()
+  "always/initial/final blocks.
+Name is the `begin : label' if present, else the keyword; sensitivity as detail."
+  (cl-loop for n in (my/verilog-ts-imenu--nodes (rx bos (or "always" "initial" "final") "_construct" eos))
+           for kw = (or (my/verilog-ts-imenu--text (my/verilog-ts-imenu--child n (rx bos "always_keyword" eos)))
+                        (car (split-string (treesit-node-type n) "_")))
+           for stmt = (or (my/verilog-ts-imenu--text (my/verilog-ts-imenu--child n (rx bos "statement" eos))) "")
+           for label = (and (string-match (rx bos (* nonl) "begin" (* space) ":" (* space) (group (+ (any word "_$")))) stmt)
+                            (match-string 1 stmt))
+           for ev = (and (string-match (rx bos "@" (* space) "(" (group (* (not (any ")")))) ")") stmt)
+                         (concat "@(" (my/verilog-ts-imenu--trunc (match-string 1 stmt) 40) ")"))
+           collect (list (or label kw)
+                         (string-join (delq nil (list (and label kw) ev)) " ")
+                         (treesit-node-start n))))
+
+(defun my/verilog-ts-imenu--functions ()
+  (cl-loop for n in (my/verilog-ts-imenu--nodes (rx bos (or "function" "task") "_declaration" eos))
+           for name = (ignore-errors (verilog-ts--node-identifier-name n))
+           for kw = (car (split-string (treesit-node-type n) "_"))
+           for ret = (my/verilog-ts-imenu--text
+                      (treesit-search-subtree n (rx bos "data_type_or_void" eos) nil nil 2))
+           when name collect (list name (string-join (delq nil (list kw ret)) " ") (treesit-node-start n))))
+
+(defun my/verilog-ts-imenu--generates ()
+  "Named generate blocks (`begin : g_name'), with the construct kind as detail."
+  (cl-loop for n in (my/verilog-ts-imenu--nodes (rx bos "generate_block" eos))
+           for name = (treesit-node-text (treesit-node-child-by-field-name n "name") t)
+           for parent = (treesit-node-type (treesit-node-parent n))
+           for kind = (cond ((string-prefix-p "loop" parent) "for")
+                            ((string-match-p "\\`\\(if\\|conditional\\)" parent) "if")
+                            ((string-prefix-p "case" parent) "case")
+                            (t "generate"))
+           when name collect (list name kind (treesit-node-start n))))
+
+;;; assembly
+
+(defvar my/verilog-ts-imenu-categories
+  '(("Modules"    my/verilog-ts-imenu--modules    font-lock-keyword-face)
+    ("Ports"      my/verilog-ts-imenu--ports      font-lock-variable-name-face)
+    ("Parameters" my/verilog-ts-imenu--params     font-lock-constant-face)
+    ("Typedefs"   my/verilog-ts-imenu--typedefs   font-lock-type-face)
+    ("Signals"    my/verilog-ts-imenu--signals    font-lock-variable-name-face)
+    ("Instances"  my/verilog-ts-imenu--instances  font-lock-function-name-face)
+    ("Always"     my/verilog-ts-imenu--always     font-lock-keyword-face)
+    ("Functions"  my/verilog-ts-imenu--functions  font-lock-function-name-face)
+    ("Generates"  my/verilog-ts-imenu--generates  font-lock-keyword-face))
+  "Imenu categories: (LABEL COLLECTOR NAME-FACE), in display order.")
+
+(defun my/verilog-ts-imenu--format (entries face)
+  "Turn ((NAME DETAIL POS) ...) into imenu entries with aligned two-column labels."
+  (let ((width (min my/verilog-ts-imenu-name-width-cap
+                    (apply #'max 0 (mapcar (lambda (e) (length (car e))) entries)))))
+    (mapcar (lambda (e)
+              (pcase-let ((`(,name ,detail ,pos) e))
+                (cons (if (string-empty-p detail)
+                          (propertize name 'face face)
+                        (concat (propertize (format (format "%%-%ds" width) name) 'face face)
+                                (make-string my/verilog-ts-imenu-gap ?\s)
+                                (propertize detail 'face 'shadow)))
+                      (if imenu-use-markers (copy-marker pos) pos))))
+            entries)))
+
+(defun my/verilog-ts-imenu-create-index ()
+  "Imenu index for `verilog-ts-mode', grouped by category like the Elisp one."
+  (cl-loop for (cat fn face) in my/verilog-ts-imenu-categories
+           for entries = (condition-case err
+                             (funcall fn)
+                           (error (message "imenu %s: %S" cat err) nil))
+           when entries collect (cons cat (my/verilog-ts-imenu--format entries face))))
+
+(defun my/verilog-ts-imenu-enable ()
+  (setq-local imenu-create-index-function #'my/verilog-ts-imenu-create-index))
+
+;; Depth 90: run after `verilog-ext-mode' (hooked at 0) so this index wins.
+(add-hook 'verilog-ts-mode-hook #'my/verilog-ts-imenu-enable 90)
+#+end_src
+
+*** consult-imenu narrowing
+=SPC s i= then =<= followed by the key: =p= ports, =s= signals, =i= instances,
+=P= parameters, =t= typedefs, =m= modules, =a= always, =f= functions, =g= generates.
+#+begin_src emacs-lisp
+;; Narrowing keys and faces for `consult-imenu' (SPC s i), like the Elisp preset.
+(after! consult-imenu
+  (setf (alist-get 'verilog-ts-mode consult-imenu-config)
+        '(:toplevel "Modules"
+          :types ((?m "Modules"    font-lock-keyword-face)
+                  (?p "Ports"      font-lock-variable-name-face)
+                  (?P "Parameters" font-lock-constant-face)
+                  (?t "Typedefs"   font-lock-type-face)
+                  (?s "Signals"    font-lock-variable-name-face)
+                  (?i "Instances"  font-lock-function-name-face)
+                  (?a "Always"     font-lock-keyword-face)
+                  (?f "Functions"  font-lock-function-name-face)
+                  (?g "Generates"  font-lock-keyword-face)))))
 #+end_src
 
 * verilog-ext
