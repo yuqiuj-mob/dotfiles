@@ -166,3 +166,6 @@
 (package! nov)
 (package! hjson-mode
   :recipe (:host github :repo "hjson/hjson-emacs"))
+
+;; machine-local package declarations (untracked overlay, see config.org)
+(load (expand-file-name "~/.config/doom-local/packages.el") t t)

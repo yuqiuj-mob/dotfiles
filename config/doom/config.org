@@ -40,7 +40,8 @@ repo stays portable.
 ;; Machine/site-local overlay: untracked, lives outside the dotfiles repo.
 (setq custom-file (expand-file-name "~/.config/doom-local/custom.el"))
 (dolist (f (sort (file-expand-wildcards "~/.config/doom-local/*.el") #'string<))
-  (unless (string-suffix-p "custom.el" f)
+  ;; packages.el is read by doom sync only; custom.el is loaded last below
+  (unless (or (string-suffix-p "custom.el" f) (string-suffix-p "packages.el" f))
     (load f nil t)))
 ;; Load custom-file LAST so Customize/`!`-marked safe local variables persist
 ;; across reboots (without this, safe-local-variable marks never take effect).
