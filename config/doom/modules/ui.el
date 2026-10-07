@@ -66,7 +66,7 @@
   (lin-global-mode 1))
 
 (after! doom-modeline
-  (setq doom-modeline-buffer-file-name-style 'relative-to-project
+  (setq doom-modeline-buffer-file-name-style 'file-name-with-project
         doom-modeline-buffer-encoding nil
         doom-modeline-vcs-max-length 15
         doom-modeline-enable-word-count t))
