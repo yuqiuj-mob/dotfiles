@@ -237,7 +237,7 @@ Name is the `begin : label' if present, else the keyword; sensitivity as detail.
 ;; Depth 90: run after `verilog-ext-mode' (hooked at 0) so this index wins.
 (add-hook 'verilog-ts-mode-hook #'my/verilog-ts-imenu-enable 90)
 
-;; Narrowing keys and faces for `consult-imenu' (SPC s i), like the Elisp preset.
+;; Narrowing keys and faces for `consult-imenu' (C-c s i), like the Elisp preset.
 (after! consult-imenu
   (setf (alist-get 'verilog-ts-mode consult-imenu-config)
         '(:toplevel "Modules"
@@ -299,6 +299,149 @@ Name is the `begin : label' if present, else the keyword; sensitivity as detail.
     (push (cons mode '(svlangserver lsp-verilog
                        ve-hdl-checker ve-svlangserver ve-svls ve-veridian))
           lsp-disabled-clients)))
+
+(after! lsp-mode
+  ;; lsp-ts-query fails to load at the pinned lsp-mode (bad `cl-remove-if'
+  ;; predicate) and takes `M-x lsp' down with it for every language.
+  (setq lsp-client-packages (delq 'lsp-ts-query lsp-client-packages)))
+
+(defvar-local my/slang-filelists nil
+  "Filelists (.f) making up this project's slang-server build.
+Relative to the lsp workspace root; set it in .dir-locals.el.")
+(put 'my/slang-filelists 'safe-local-variable #'list-of-strings-p)
+
+(after! lsp-mode
+  ;; verilog-ts-mode is not in lsp-mode's language table; slang-server outranks the
+  ;; verible/svls clients (priority 10) so `M-x lsp' picks it.
+  (add-to-list 'lsp-language-id-configuration '(verilog-ts-mode . "verilog"))
+  (lsp-register-client
+   (make-lsp-client :new-connection (lsp-stdio-connection "slang-server")
+                    :major-modes '(verilog-mode verilog-ts-mode)
+                    :priority 10
+                    :server-id 'slang-server))
+
+  ;; slang-server's extras are plain workspace/executeCommand calls taking path strings.
+  (defun my/slang--execute (command &rest args)
+    (lsp-workspace-command-execute command (apply #'vector args)))
+
+  (defun my/slang-set-build-file (flist &rest more)
+    "Elaborate the design described by FLIST (a VCS-style .f) in slang-server.
+MORE filelists join the same build, e.g. a testbench .f plus the RTL .f it is
+compiled with.  Interactively, use `my/slang-filelists' when the project sets
+it; otherwise, or with a prefix argument, prompt.  The filelists are flattened
+by `slang-expand-flist' into .slang/local/builds/ under the workspace root, and
+that flat file is handed to the server: `slang.setBuildFile' reads its argument
+literally."
+    (interactive
+     (if (and my/slang-filelists (not current-prefix-arg))
+         (mapcar (lambda (f) (expand-file-name f (lsp-workspace-root))) my/slang-filelists)
+       (let* ((read (lambda (prompt)
+                      (read-file-name prompt nil nil t nil
+                                      (lambda (f) (or (file-directory-p f)
+                                                      (string-suffix-p ".f" f))))))
+              (flists (list (funcall read "Build filelist (.f): "))))
+         (while (y-or-n-p "Add another filelist? ")
+           (push (funcall read "Next filelist (.f): ") flists))
+         (nreverse flists))))
+    (let* ((root (lsp-workspace-root))
+           (flists (mapcar #'expand-file-name (cons flist more)))
+           (out (expand-file-name (concat ".slang/local/builds/" (file-name-nondirectory flist)) root)))
+      (make-directory (file-name-directory out) t)
+      (with-temp-file out
+        (unless (zerop (apply #'call-process "slang-expand-flist" nil (list (current-buffer) nil) nil
+                              flists))
+          (user-error "slang-expand-flist failed on %s" (string-join flists " "))))
+      (my/slang--execute "slang.setBuildFile" out)
+      (message "slang-server: build set from %s (%d lines)" (string-join flists " ")
+               (with-temp-buffer (insert-file-contents out) (count-lines (point-min) (point-max))))))
+
+  (defun my/slang-set-top-level (&optional file)
+    "Make FILE the elaboration top in slang-server.
+FILE defaults to the current buffer's file; a prefix argument prompts for it."
+    (interactive (list (and current-prefix-arg (read-file-name "Top-level file: " nil nil t))))
+    (my/slang--execute "slang.setTopLevel" (expand-file-name (or file buffer-file-name)))
+    (message "slang-server: top level set to %s" (file-name-nondirectory (or file buffer-file-name))))
+
+  (defun my/slang-instances-of-module (module)
+    "List instance paths of MODULE (default: symbol at point) from the current build."
+    (interactive (list (read-string "Module: " (thing-at-point 'symbol t))))
+    (let ((res (my/slang--execute "slang.getInstancesOfModule" module)))
+      (if (seq-empty-p res)
+          (message "No instances of %s in the current build" module)
+        (message "%s" (mapconcat (lambda (i) (lsp-get i :instPath)) res "\n")))))
+
+  (defun my/slang-hier-path-at-point ()
+    "Elaborated hierarchical path of the signal at point (or the region).
+The enclosing module's instance paths come from the current build; with several
+instances, pick one."
+    (let* ((sig (cond ((use-region-p)
+                       (string-trim (buffer-substring-no-properties (region-beginning) (region-end))))
+                      ((thing-at-point 'symbol t))
+                      (t (user-error "No signal at point"))))
+           (decl (my/verilog-ts-imenu--ancestor
+                  (treesit-node-at (point)) (rx bos (or "module" "interface") "_declaration" eos)))
+           (module (or (and decl
+                            (or (ignore-errors (verilog-ts--node-identifier-name decl))
+                                (treesit-node-text
+                                 (treesit-search-subtree decl (rx bos "simple_identifier" eos)) t)))
+                       (user-error "Not inside a module or interface")))
+           (insts (mapcar (lambda (i) (lsp-get i :instPath))
+                          (my/slang--execute "slang.getInstancesOfModule" module))))
+      (unless insts (user-error "%s has no instance in the current build" module))
+      (concat (if (cdr insts)
+                  (completing-read (format "Instance of %s: " module) insts nil t)
+                (car insts))
+              "." sig)))
+
+  (defun my/slang-copy-hier-path ()
+    "Copy the elaborated hierarchical path of the signal at point (or the region)."
+    (interactive)
+    (let ((path (my/slang-hier-path-at-point)))
+      (kill-new path)
+      (message "%s" path)))
+
+  (defun my/slang-expand-macros ()
+    "Show the current file with every macro expanded, at the current line.
+The server prints its own (unsaved-edits-included) copy; `ifdef branches follow
+the server's defines, see `my/slang-add-define'."
+    (interactive)
+    (let ((src (expand-file-name buffer-file-name))
+          (line (line-number-at-pos nil t))
+          (dst (make-temp-file "slang-expand-" nil ".sv")))
+      (unwind-protect
+          (progn
+            (unless (eq t (my/slang--execute "slang.expandMacros" (list :src src :dst dst)))
+              (user-error "slang-server could not expand %s" src))
+            (pop-to-buffer (get-buffer-create (format "*slang-expand: %s*" (file-name-nondirectory src))))
+            (let ((inhibit-read-only t))
+              (erase-buffer)
+              (insert-file-contents dst))
+            (verilog-ts-mode)
+            (view-mode 1)
+            (goto-char (point-min))
+            (forward-line (1- line)))
+        (delete-file dst))))
+
+  (defun my/slang-add-define (define)
+    "Add DEFINE (NAME or NAME=VALUE, default: symbol at point) to the server flags.
+Persistent: appended as -D to .slang/local/server.json under the workspace root;
+edit that file to remove it. The server reloads its config and the current build."
+    (interactive (let ((sym (thing-at-point 'symbol t)))
+                   (list (read-string (format-prompt "Define (NAME or NAME=VALUE)" sym) nil nil sym))))
+    (when (string-empty-p define) (user-error "Empty define"))
+    (my/slang--execute "slang.addDefine" define)
+    (message "slang-server: added -D%s" define)))
+
+(map! :after verilog-ext
+      :map verilog-ext-mode-map
+      :localleader
+      (:prefix ("s" . "slang")
+       :desc "Set build filelist" "b" #'my/slang-set-build-file
+       :desc "Set top level"      "t" #'my/slang-set-top-level
+       :desc "Instances of module" "i" #'my/slang-instances-of-module
+       :desc "Copy hier path"     "p" #'my/slang-copy-hier-path
+       :desc "Expand macros"      "m" #'my/slang-expand-macros
+       :desc "Add define"         "d" #'my/slang-add-define))
 
 (defun verilog-insert-cust-comment-block ()
   "Insert a section comment block and position cursor inside."
